@@ -1,98 +1,315 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React, { useState } from "react";
+import {
+  FlatList,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+const COLORS = {
+  bg: "#0B0D0F",
+  panel: "#14171A",
+  panelRaised: "#1B1F23",
+  line: "#262B30",
+  amber: "#FF9F1C",
+  green: "#3ECF8E",
+  text: "#EDEEF0",
+  textDim: "#8A8F98",
+  textFaint: "#565B62",
+};
 
-export default function HomeScreen() {
+type TaskStatus = "pending" | "completed";
+type DayKey = "today" | "tomorrow";
+
+interface Task {
+  id: string;
+  name: string;
+  time: string;
+  date: DayKey;
+  status: TaskStatus;
+}
+
+function uid(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+function formatTime(time: string): string {
+  if (!time) return "Anytime";
+  const parts = time.split(":");
+  const h = parseInt(parts[0], 10);
+  const m = parts[1] || "00";
+  if (isNaN(h)) return "Anytime";
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = ((h + 11) % 12) + 1;
+  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+}
+
+export default function TodayScreen() {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [activeDay, setActiveDay] = useState<DayKey>("today");
+  const [name, setName] = useState("");
+  const [time, setTime] = useState("");
+  const [formDay, setFormDay] = useState<DayKey>("today");
+
+  const addTask = () => {
+    if (!name.trim()) return;
+    setTasks((prev) => [
+      ...prev,
+      { id: uid(), name: name.trim(), time, date: formDay, status: "pending" },
+    ]);
+    setName("");
+    setTime("");
+  };
+
+  const toggleComplete = (id: string) => {
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === id
+          ? { ...t, status: t.status === "completed" ? "pending" : "completed" }
+          : t,
+      ),
+    );
+  };
+
+  const visibleTasks = tasks
+    .filter((t) => t.date === activeDay)
+    .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.header}>
+        <Text style={styles.brand}>IGNITION</Text>
+        <Text style={styles.brandSub}>5 · 4 · 3 · 2 · 1 · GO</Text>
+      </View>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      <View style={styles.dayToggle}>
+        <TouchableOpacity
+          style={[styles.dayBtn, activeDay === "today" && styles.dayBtnActive]}
+          onPress={() => setActiveDay("today")}
+        >
+          <Text
+            style={[
+              styles.dayBtnText,
+              activeDay === "today" && styles.dayBtnTextActive,
+            ]}
+          >
+            Today
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.dayBtn,
+            activeDay === "tomorrow" && styles.dayBtnActive,
+          ]}
+          onPress={() => setActiveDay("tomorrow")}
+        >
+          <Text
+            style={[
+              styles.dayBtnText,
+              activeDay === "tomorrow" && styles.dayBtnTextActive,
+            ]}
+          >
+            Tomorrow
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <FlatList
+        data={visibleTasks}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.emptyText}>
+              {activeDay === "today"
+                ? "No tasks yet. Add the one you're dreading most."
+                : "Plan tomorrow once today is handled."}
+            </Text>
+          </View>
+        }
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={[
+              styles.taskCard,
+              item.status === "completed" && styles.taskCardDone,
+            ]}
+            onPress={() => toggleComplete(item.id)}
+          >
+            <Text style={styles.taskTime}>{formatTime(item.time)}</Text>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={[
+                  styles.taskName,
+                  item.status === "completed" && styles.taskNameDone,
+                ]}
+              >
+                {item.name}
+              </Text>
+            </View>
+            <Text style={styles.taskStatus}>
+              {item.status === "completed" ? "✓" : "Start"}
+            </Text>
+          </TouchableOpacity>
+        )}
+      />
+
+      <View style={styles.addForm}>
+        <View style={styles.addRow}>
+          <TextInput
+            style={styles.input}
+            placeholder="What's the task?"
+            placeholderTextColor={COLORS.textFaint}
+            value={name}
+            onChangeText={setName}
+          />
+          <TextInput
+            style={styles.timeInput}
+            placeholder="HH:MM"
+            placeholderTextColor={COLORS.textFaint}
+            value={time}
+            onChangeText={setTime}
+          />
+        </View>
+        <View style={styles.dayToggle}>
+          <TouchableOpacity
+            style={[styles.dayBtn, formDay === "today" && styles.dayBtnActive]}
+            onPress={() => setFormDay("today")}
+          >
+            <Text
+              style={[
+                styles.dayBtnText,
+                formDay === "today" && styles.dayBtnTextActive,
+              ]}
+            >
+              Today
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.dayBtn,
+              formDay === "tomorrow" && styles.dayBtnActive,
+            ]}
+            onPress={() => setFormDay("tomorrow")}
+          >
+            <Text
+              style={[
+                styles.dayBtnText,
+                formDay === "tomorrow" && styles.dayBtnTextActive,
+              ]}
+            >
+              Tomorrow
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity style={styles.addBtn} onPress={addTask}>
+          <Text style={styles.addBtnText}>Add task</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  safe: { flex: 1, backgroundColor: COLORS.bg },
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.line,
+  },
+  brand: {
+    color: COLORS.amber,
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 3,
+  },
+  brandSub: {
+    color: COLORS.textFaint,
+    fontSize: 11,
+    marginTop: 4,
+    letterSpacing: 1,
+  },
+  dayToggle: {
+    flexDirection: "row",
     gap: 8,
+    paddingHorizontal: 20,
+    marginVertical: 12,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  dayBtn: {
+    flex: 1,
+    backgroundColor: COLORS.panelRaised,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: "center",
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  dayBtnActive: { borderColor: COLORS.amber },
+  dayBtnText: { color: COLORS.textDim, fontSize: 13, fontWeight: "600" },
+  dayBtnTextActive: { color: COLORS.amber },
+  empty: {
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderStyle: "dashed",
+    borderRadius: 10,
+    padding: 26,
+    alignItems: "center",
   },
+  emptyText: { color: COLORS.textFaint, fontSize: 13, textAlign: "center" },
+  taskCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.panel,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 10,
+    gap: 12,
+  },
+  taskCardDone: { opacity: 0.5 },
+  taskTime: { color: COLORS.amber, fontSize: 13, fontWeight: "600", width: 70 },
+  taskName: { color: COLORS.text, fontSize: 15, fontWeight: "500" },
+  taskNameDone: { textDecorationLine: "line-through", color: COLORS.textFaint },
+  taskStatus: { color: COLORS.green, fontSize: 13, fontWeight: "600" },
+  addForm: {
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.line,
+    backgroundColor: COLORS.panel,
+  },
+  addRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
+  input: {
+    flex: 1,
+    backgroundColor: COLORS.panelRaised,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: COLORS.text,
+    fontSize: 14,
+  },
+  timeInput: {
+    width: 90,
+    backgroundColor: COLORS.panelRaised,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: COLORS.text,
+    fontSize: 14,
+  },
+  addBtn: {
+    backgroundColor: COLORS.amber,
+    borderRadius: 8,
+    paddingVertical: 13,
+    alignItems: "center",
+  },
+  addBtnText: { color: "#201400", fontSize: 14, fontWeight: "700" },
 });
