@@ -1,3 +1,4 @@
+import CountdownConsole from "@/components/CountdownConsole";
 import React, { useState } from "react";
 import {
   FlatList,
@@ -53,6 +54,7 @@ export default function TodayScreen() {
   const [name, setName] = useState("");
   const [time, setTime] = useState("");
   const [formDay, setFormDay] = useState<DayKey>("today");
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
   const addTask = () => {
     if (!name.trim()) return;
@@ -136,7 +138,9 @@ export default function TodayScreen() {
               styles.taskCard,
               item.status === "completed" && styles.taskCardDone,
             ]}
-            onPress={() => toggleComplete(item.id)}
+            onPress={() =>
+              item.status !== "completed" && setActiveTaskId(item.id)
+            }
           >
             <Text style={styles.taskTime}>{formatTime(item.time)}</Text>
             <View style={{ flex: 1 }}>
@@ -208,6 +212,15 @@ export default function TodayScreen() {
           <Text style={styles.addBtnText}>Add task</Text>
         </TouchableOpacity>
       </View>
+      <CountdownConsole
+        visible={activeTaskId !== null}
+        taskName={tasks.find((t) => t.id === activeTaskId)?.name ?? ""}
+        onClose={() => setActiveTaskId(null)}
+        onComplete={() => {
+          if (activeTaskId) toggleComplete(activeTaskId);
+          setActiveTaskId(null);
+        }}
+      />
     </SafeAreaView>
   );
 }
