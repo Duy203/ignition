@@ -2,6 +2,8 @@ import CountdownConsole from "@/components/CountdownConsole";
 import React, { useState } from "react";
 import {
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -81,111 +83,29 @@ export default function TodayScreen() {
     .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <Text style={styles.brand}>IGNITION</Text>
-        <Text style={styles.brandSub}>5 · 4 · 3 · 2 · 1 · GO</Text>
-      </View>
-
-      <View style={styles.dayToggle}>
-        <TouchableOpacity
-          style={[styles.dayBtn, activeDay === "today" && styles.dayBtnActive]}
-          onPress={() => setActiveDay("today")}
-        >
-          <Text
-            style={[
-              styles.dayBtnText,
-              activeDay === "today" && styles.dayBtnTextActive,
-            ]}
-          >
-            Today
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.dayBtn,
-            activeDay === "tomorrow" && styles.dayBtnActive,
-          ]}
-          onPress={() => setActiveDay("tomorrow")}
-        >
-          <Text
-            style={[
-              styles.dayBtnText,
-              activeDay === "tomorrow" && styles.dayBtnTextActive,
-            ]}
-          >
-            Tomorrow
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <FlatList
-        data={visibleTasks}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>
-              {activeDay === "today"
-                ? "No tasks yet. Add the one you're dreading most."
-                : "Plan tomorrow once today is handled."}
-            </Text>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[
-              styles.taskCard,
-              item.status === "completed" && styles.taskCardDone,
-            ]}
-            onPress={() =>
-              item.status !== "completed" && setActiveTaskId(item.id)
-            }
-          >
-            <Text style={styles.taskTime}>{formatTime(item.time)}</Text>
-            <View style={{ flex: 1 }}>
-              <Text
-                style={[
-                  styles.taskName,
-                  item.status === "completed" && styles.taskNameDone,
-                ]}
-              >
-                {item.name}
-              </Text>
-            </View>
-            <Text style={styles.taskStatus}>
-              {item.status === "completed" ? "✓" : "Start"}
-            </Text>
-          </TouchableOpacity>
-        )}
-      />
-
-      <View style={styles.addForm}>
-        <View style={styles.addRow}>
-          <TextInput
-            style={styles.input}
-            placeholder="What's the task?"
-            placeholderTextColor={COLORS.textFaint}
-            value={name}
-            onChangeText={setName}
-          />
-          <TextInput
-            style={styles.timeInput}
-            placeholder="HH:MM"
-            placeholderTextColor={COLORS.textFaint}
-            value={time}
-            onChangeText={setTime}
-          />
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+    >
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.header}>
+          <Text style={styles.brand}>IGNITION</Text>
+          <Text style={styles.brandSub}>5 · 4 · 3 · 2 · 1 · GO</Text>
         </View>
+
         <View style={styles.dayToggle}>
           <TouchableOpacity
-            style={[styles.dayBtn, formDay === "today" && styles.dayBtnActive]}
-            onPress={() => setFormDay("today")}
+            style={[
+              styles.dayBtn,
+              activeDay === "today" && styles.dayBtnActive,
+            ]}
+            onPress={() => setActiveDay("today")}
           >
             <Text
               style={[
                 styles.dayBtnText,
-                formDay === "today" && styles.dayBtnTextActive,
+                activeDay === "today" && styles.dayBtnTextActive,
               ]}
             >
               Today
@@ -194,34 +114,128 @@ export default function TodayScreen() {
           <TouchableOpacity
             style={[
               styles.dayBtn,
-              formDay === "tomorrow" && styles.dayBtnActive,
+              activeDay === "tomorrow" && styles.dayBtnActive,
             ]}
-            onPress={() => setFormDay("tomorrow")}
+            onPress={() => setActiveDay("tomorrow")}
           >
             <Text
               style={[
                 styles.dayBtnText,
-                formDay === "tomorrow" && styles.dayBtnTextActive,
+                activeDay === "tomorrow" && styles.dayBtnTextActive,
               ]}
             >
               Tomorrow
             </Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.addBtn} onPress={addTask}>
-          <Text style={styles.addBtnText}>Add task</Text>
-        </TouchableOpacity>
-      </View>
-      <CountdownConsole
-        visible={activeTaskId !== null}
-        taskName={tasks.find((t) => t.id === activeTaskId)?.name ?? ""}
-        onClose={() => setActiveTaskId(null)}
-        onComplete={() => {
-          if (activeTaskId) toggleComplete(activeTaskId);
-          setActiveTaskId(null);
-        }}
-      />
-    </SafeAreaView>
+
+        <FlatList
+          data={visibleTasks}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>
+                {activeDay === "today"
+                  ? "No tasks yet. Add the one you're dreading most."
+                  : "Plan tomorrow once today is handled."}
+              </Text>
+            </View>
+          }
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[
+                styles.taskCard,
+                item.status === "completed" && styles.taskCardDone,
+              ]}
+              onPress={() =>
+                item.status !== "completed" && setActiveTaskId(item.id)
+              }
+            >
+              <Text style={styles.taskTime}>{formatTime(item.time)}</Text>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.taskName,
+                    item.status === "completed" && styles.taskNameDone,
+                  ]}
+                >
+                  {item.name}
+                </Text>
+              </View>
+              <Text style={styles.taskStatus}>
+                {item.status === "completed" ? "✓" : "Start"}
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
+
+        <View style={styles.addForm}>
+          <View style={styles.addRow}>
+            <TextInput
+              style={styles.input}
+              placeholder="What's the task?"
+              placeholderTextColor={COLORS.textFaint}
+              value={name}
+              onChangeText={setName}
+            />
+            <TextInput
+              style={styles.timeInput}
+              placeholder="HH:MM"
+              placeholderTextColor={COLORS.textFaint}
+              value={time}
+              onChangeText={setTime}
+            />
+          </View>
+          <View style={styles.dayToggle}>
+            <TouchableOpacity
+              style={[
+                styles.dayBtn,
+                formDay === "today" && styles.dayBtnActive,
+              ]}
+              onPress={() => setFormDay("today")}
+            >
+              <Text
+                style={[
+                  styles.dayBtnText,
+                  formDay === "today" && styles.dayBtnTextActive,
+                ]}
+              >
+                Today
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.dayBtn,
+                formDay === "tomorrow" && styles.dayBtnActive,
+              ]}
+              onPress={() => setFormDay("tomorrow")}
+            >
+              <Text
+                style={[
+                  styles.dayBtnText,
+                  formDay === "tomorrow" && styles.dayBtnTextActive,
+                ]}
+              >
+                Tomorrow
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity style={styles.addBtn} onPress={addTask}>
+            <Text style={styles.addBtnText}>Add task</Text>
+          </TouchableOpacity>
+        </View>
+        <CountdownConsole
+          visible={activeTaskId !== null}
+          taskName={tasks.find((t) => t.id === activeTaskId)?.name ?? ""}
+          onClose={() => setActiveTaskId(null)}
+          onComplete={() => {
+            if (activeTaskId) toggleComplete(activeTaskId);
+            setActiveTaskId(null);
+          }}
+        />
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
