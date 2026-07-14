@@ -1,5 +1,11 @@
 import CountdownConsole from "@/components/CountdownConsole";
-import React, { useState } from "react";
+import {
+  requestNotificationPermissions,
+  scheduleTaskNotification,
+} from "@/utils/notification";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import * as Notifications from "expo-notifications";
+import React, { useEffect, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -33,6 +39,7 @@ interface Task {
   time: string;
   date: DayKey;
   status: TaskStatus;
+  notificationId?: string | null;
 }
 
 function uid(): string {
@@ -54,20 +61,70 @@ export default function TodayScreen() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeDay, setActiveDay] = useState<DayKey>("today");
   const [name, setName] = useState("");
-  const [time, setTime] = useState("");
+  //const [time, setTime] = useState("");
+  const [time, setTime] = useState<Date | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
   const [formDay, setFormDay] = useState<DayKey>("today");
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
-  const addTask = () => {
+  useEffect(() => {
+    requestNotificationPermissions();
+
+    const sub = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const taskId = response.notification.request.content.data?.taskId as
+          | string
+          | undefined;
+        if (taskId) setActiveTaskId(taskId);
+      },
+    );
+
+    return () => sub.remove();
+  }, []);
+
+  function toTimeString(date: Date | null): string {
+    if (!date) return "";
+    const h = String(date.getHours()).padStart(2, "0");
+    const m = String(date.getMinutes()).padStart(2, "0");
+    return `${h}:${m}`;
+  }
+
+  function getTriggerDate(dayKey: DayKey, time: string): Date | null {
+    if (!time) return null;
+    const [h, m] = time.split(":").map(Number);
+    const d = new Date();
+    if (dayKey === "tomorrow") d.setDate(d.getDate() + 1);
+    d.setHours(h, m, 0, 0);
+    return d;
+  }
+  const addTask = async () => {
     if (!name.trim()) return;
+    const id = uid();
+    const triggerDate = getTriggerDate(formDay, toTimeString(time));
+    let notificationId: string | null = null;
+
+    if (triggerDate) {
+      notificationId = await scheduleTaskNotification(
+        id,
+        name.trim(),
+        triggerDate,
+      );
+    }
+
     setTasks((prev) => [
       ...prev,
-      { id: uid(), name: name.trim(), time, date: formDay, status: "pending" },
+      {
+        id,
+        name: name.trim(),
+        time: toTimeString(time),
+        date: formDay,
+        status: "pending",
+        notificationId,
+      },
     ]);
     setName("");
-    setTime("");
+    setTime(null);
   };
-
   const toggleComplete = (id: string) => {
     setTasks((prev) =>
       prev.map((t) =>
@@ -179,13 +236,31 @@ export default function TodayScreen() {
               value={name}
               onChangeText={setName}
             />
-            <TextInput
+            <TouchableOpacity
               style={styles.timeInput}
-              placeholder="HH:MM"
-              placeholderTextColor={COLORS.textFaint}
-              value={time}
-              onChangeText={setTime}
-            />
+              onPress={() => setShowPicker(true)}
+            >
+              <Text
+                style={{
+                  color: time ? COLORS.text : COLORS.textFaint,
+                  fontSize: 14,
+                }}
+              >
+                {time ? formatTime(toTimeString(time)) : "Set time"}
+              </Text>
+            </TouchableOpacity>
+
+            {showPicker && (
+              <DateTimePicker
+                value={time ?? new Date()}
+                mode="time"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={(event, selectedDate) => {
+                  setShowPicker(false);
+                  if (selectedDate) setTime(selectedDate);
+                }}
+              />
+            )}
           </View>
           <View style={styles.dayToggle}>
             <TouchableOpacity
