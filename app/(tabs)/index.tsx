@@ -40,6 +40,39 @@ interface Task {
   date: DayKey;
   status: TaskStatus;
   notificationId?: string | null;
+  completedAt?: string | null;
+}
+
+// helper functions
+
+function dateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function computeStreak(tasks: Task[]): number {
+  const completeDates = new Set<string>();
+  tasks.forEach((t) => {
+    if (t.status === "completed" && t.completedAt) {
+      completeDates.add(dateKey(new Date(t.completedAt)));
+    }
+  });
+  let streak = 0;
+  const cursor = new Date();
+  if (!completeDates.has(dateKey(cursor))) {
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  while (completeDates.has(dateKey(cursor))) {
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
+function computeTodayPct(tasks: Task[]): number {
+  const list = tasks.filter((t) => t.date === "today");
+  if (list.length === 0) return 0;
+  const done = list.filter((t) => t.status === "completed").length;
+  return Math.round((done / list.length) * 100);
 }
 
 function uid(): string {
@@ -129,7 +162,12 @@ export default function TodayScreen() {
     setTasks((prev) =>
       prev.map((t) =>
         t.id === id
-          ? { ...t, status: t.status === "completed" ? "pending" : "completed" }
+          ? {
+              ...t,
+              status: t.status === "completed" ? "pending" : "completed",
+              completedAt:
+                t.status === "completed" ? null : new Date().toISOString(),
+            }
           : t,
       ),
     );
@@ -146,9 +184,30 @@ export default function TodayScreen() {
       keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
     >
       <SafeAreaView style={styles.safe}>
-        <View style={styles.header}>
-          <Text style={styles.brand}>IGNITION</Text>
-          <Text style={styles.brandSub}>5 · 4 · 3 · 2 · 1 · GO</Text>
+        <View
+          style={[
+            styles.header,
+            {
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+            },
+          ]}
+        >
+          <View>
+            <Text style={styles.brand}>IGNITION</Text>
+            <Text style={styles.brandSub}>5 · 4 · 3 · 2 · 1 · GO</Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: 18 }}>
+            <View style={{ alignItems: "flex-end" }}>
+              <Text style={styles.statNum}>{computeStreak(tasks)}</Text>
+              <Text style={styles.statLabel}>Day streak</Text>
+            </View>
+            <View style={{ alignItems: "flex-end" }}>
+              <Text style={styles.statNum}>{computeTodayPct(tasks)}%</Text>
+              <Text style={styles.statLabel}>Today</Text>
+            </View>
+          </View>
         </View>
 
         <View style={styles.dayToggle}>
@@ -406,6 +465,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     color: COLORS.text,
     fontSize: 14,
+  },
+  statNum: { color: COLORS.amber, fontSize: 20, fontWeight: "700" },
+  statLabel: {
+    color: COLORS.textFaint,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginTop: 2,
   },
   addBtn: {
     backgroundColor: COLORS.amber,
