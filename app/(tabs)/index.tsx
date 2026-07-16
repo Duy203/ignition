@@ -1,8 +1,10 @@
 import CountdownConsole from "@/components/CountdownConsole";
+import OnboardingScreen from "@/components/OnBoardingScreen";
 import {
   requestNotificationPermissions,
   scheduleTaskNotification,
 } from "@/utils/notification";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Notifications from "expo-notifications";
 import React, { useEffect, useState } from "react";
@@ -101,6 +103,10 @@ export default function TodayScreen() {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
   useEffect(() => {
+    AsyncStorage.getItem("hasOnboarded").then((value) => {
+      if (!value) setShowOnboarding(true);
+    });
+
     requestNotificationPermissions();
 
     const sub = Notifications.addNotificationResponseReceivedListener(
@@ -177,6 +183,12 @@ export default function TodayScreen() {
     .filter((t) => t.date === activeDay)
     .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
 
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const finishOnboarding = () => {
+    AsyncStorage.setItem("hasOnboarded", "true");
+    setShowOnboarding(false);
+  };
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
@@ -207,6 +219,9 @@ export default function TodayScreen() {
               <Text style={styles.statNum}>{computeTodayPct(tasks)}%</Text>
               <Text style={styles.statLabel}>Today</Text>
             </View>
+            <TouchableOpacity onPress={() => setShowOnboarding(true)}>
+              <Text style={{ color: COLORS.textFaint, fontSize: 16 }}>ⓘ</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -368,6 +383,7 @@ export default function TodayScreen() {
             setActiveTaskId(null);
           }}
         />
+        <OnboardingScreen visible={showOnboarding} onDone={finishOnboarding} />
       </SafeAreaView>
     </KeyboardAvoidingView>
   );
