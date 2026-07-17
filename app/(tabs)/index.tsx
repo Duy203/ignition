@@ -1,5 +1,6 @@
 import CountdownConsole from "@/components/CountdownConsole";
 import OnboardingScreen from "@/components/OnBoardingScreen";
+import { posthog } from "@/lib/posthog";
 import { ensureAuthenticated } from "@/utils/auth";
 import {
   requestNotificationPermissions,
@@ -197,6 +198,10 @@ export default function TodayScreen() {
     );
     if (saved) {
       setTasks((prev) => [...prev, fromDbTask(saved)]);
+      posthog.capture("task_created", {
+        has_time: !!timeStr,
+        day: formTab,
+      });
     }
 
     setName("");
@@ -425,6 +430,7 @@ export default function TodayScreen() {
 
         <CountdownConsole
           visible={activeTaskId !== null}
+          taskId={activeTaskId ?? ""}
           taskName={tasks.find((t) => t.id === activeTaskId)?.name ?? ""}
           onClose={() => setActiveTaskId(null)}
           onComplete={() => {

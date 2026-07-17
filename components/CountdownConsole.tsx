@@ -1,12 +1,13 @@
+import { posthog } from "@/lib/posthog";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    Animated,
-    Easing,
-    Modal,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  Easing,
+  Modal,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
@@ -29,6 +30,7 @@ type Phase = "ready" | "counting" | "go" | "doing";
 
 interface Props {
   visible: boolean;
+  taskId: string;
   taskName: string;
   onClose: () => void;
   onComplete: () => void;
@@ -36,6 +38,7 @@ interface Props {
 
 export default function CountdownConsole({
   visible,
+  taskId,
   taskName,
   onClose,
   onComplete,
@@ -56,6 +59,7 @@ export default function CountdownConsole({
   }, [visible]);
 
   const runCountdown = () => {
+    posthog.capture("countdown_started", { task_id: taskId });
     setPhase("counting");
     let n = 5;
     setCount(n);
@@ -79,6 +83,7 @@ export default function CountdownConsole({
           easing: Easing.linear,
           useNativeDriver: true,
         }).start();
+        posthog.capture("countdown_go_reached", { task_id: taskId });
         setPhase("go");
         setTimeout(() => setPhase("doing"), 700);
       }
@@ -86,6 +91,7 @@ export default function CountdownConsole({
   };
 
   const oneMoreTime = () => {
+    posthog.capture("one_more_time_used", { task_id: taskId });
     runCountdown();
   };
 
@@ -141,7 +147,16 @@ export default function CountdownConsole({
               <TouchableOpacity style={styles.btnLaunch} onPress={runCountdown}>
                 <Text style={styles.btnLaunchText}>I'm ready</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.btnGhost} onPress={onClose}>
+              <TouchableOpacity
+                style={styles.btnGhost}
+                onPress={() => {
+                  posthog.capture("countdown_abandoned", {
+                    task_id: taskId,
+                    phase,
+                  });
+                  onClose();
+                }}
+              >
                 <Text style={styles.btnGhostText}>Not now</Text>
               </TouchableOpacity>
             </View>
@@ -149,7 +164,15 @@ export default function CountdownConsole({
 
           {phase === "doing" && (
             <View style={styles.actions}>
-              <TouchableOpacity style={styles.btnGreen} onPress={onComplete}>
+              <TouchableOpacity
+                style={styles.btnGreen}
+                onPress={() => {
+                  posthog.capture("task_completed_via_countdown", {
+                    task_id: taskId,
+                  });
+                  onComplete();
+                }}
+              >
                 <Text style={styles.btnLaunchText}>Mark complete</Text>
               </TouchableOpacity>
               <View style={styles.row}>

@@ -46,7 +46,8 @@
           "icon": "./assets/images/icon.png",
           "color": "#FF9F1C"
         }
-      ]
+      ],
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true,
