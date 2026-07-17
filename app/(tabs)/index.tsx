@@ -1,9 +1,11 @@
 import CountdownConsole from "@/components/CountdownConsole";
 import OnboardingScreen from "@/components/OnBoardingScreen";
+import { ensureAuthenticated } from "@/utils/auth";
 import {
   requestNotificationPermissions,
   scheduleTaskNotification,
 } from "@/utils/notification";
+import { DbTask, fetchTasks, insertTask, setTaskStatus } from "@/utils/tasks";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Notifications from "expo-notifications";
@@ -32,56 +34,37 @@ const COLORS = {
   textFaint: "#565B62",
 };
 
-type TaskStatus = "pending" | "completed";
-type DayKey = "today" | "tomorrow";
+type TabKey = "today" | "tomorrow";
 
 interface Task {
   id: string;
   name: string;
   time: string;
-  date: DayKey;
-  status: TaskStatus;
+  date: string; // real "YYYY-MM-DD"
+  status: "pending" | "completed";
   notificationId?: string | null;
   completedAt?: string | null;
 }
 
-// helper functions
+function pad(n: number): string {
+  return String(n).padStart(2, "0");
+}
 
 function dateKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function computeStreak(tasks: Task[]): number {
-  const completeDates = new Set<string>();
-  tasks.forEach((t) => {
-    if (t.status === "completed" && t.completedAt) {
-      completeDates.add(dateKey(new Date(t.completedAt)));
-    }
-  });
-  let streak = 0;
-  const cursor = new Date();
-  if (!completeDates.has(dateKey(cursor))) {
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  while (completeDates.has(dateKey(cursor))) {
-    streak++;
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  return streak;
+function todayStr(): string {
+  return dateKey(new Date());
 }
 
-function computeTodayPct(tasks: Task[]): number {
-  const list = tasks.filter((t) => t.date === "today");
-  if (list.length === 0) return 0;
-  const done = list.filter((t) => t.status === "completed").length;
-  return Math.round((done / list.length) * 100);
+function tomorrowStr(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return dateKey(d);
 }
 
-function uid(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
-
-function formatTime(time: string): string {
+function formatTime(time: string | null | undefined): string {
   if (!time) return "Anytime";
   const parts = time.split(":");
   const h = parseInt(parts[0], 10);
@@ -92,15 +75,69 @@ function formatTime(time: string): string {
   return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
+function toTimeString(date: Date | null): string {
+  if (!date) return "";
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function getTriggerDate(dateStr: string, time: string): Date | null {
+  if (!time) return null;
+  const [h, m] = time.split(":").map(Number);
+  const [y, mo, d] = dateStr.split("-").map(Number);
+  const trigger = new Date(y, mo - 1, d, h, m, 0, 0);
+  return trigger;
+}
+
+function computeStreak(tasks: Task[]): number {
+  const completedDates = new Set<string>();
+  tasks.forEach((t) => {
+    if (t.status === "completed" && t.completedAt) {
+      completedDates.add(dateKey(new Date(t.completedAt)));
+    }
+  });
+
+  let streak = 0;
+  const cursor = new Date();
+  if (!completedDates.has(dateKey(cursor))) {
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  while (completedDates.has(dateKey(cursor))) {
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
+function computeTodayPct(tasks: Task[]): number {
+  const list = tasks.filter((t) => t.date === todayStr());
+  if (list.length === 0) return 0;
+  const done = list.filter((t) => t.status === "completed").length;
+  return Math.round((done / list.length) * 100);
+}
+
+function fromDbTask(t: DbTask): Task {
+  return {
+    id: t.id,
+    name: t.name,
+    time: t.time ?? "",
+    date: t.date,
+    status: t.status,
+    notificationId: t.notification_id,
+    completedAt: t.completed_at,
+  };
+}
+
 export default function TodayScreen() {
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [activeDay, setActiveDay] = useState<DayKey>("today");
+  const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<TabKey>("today");
   const [name, setName] = useState("");
-  //const [time, setTime] = useState("");
   const [time, setTime] = useState<Date | null>(null);
   const [showPicker, setShowPicker] = useState(false);
-  const [formDay, setFormDay] = useState<DayKey>("today");
+  const [formTab, setFormTab] = useState<TabKey>("today");
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem("hasOnboarded").then((value) => {
@@ -118,76 +155,87 @@ export default function TodayScreen() {
       },
     );
 
+    (async () => {
+      const uid = await ensureAuthenticated();
+      setUserId(uid);
+      if (uid) {
+        const dbTasks = await fetchTasks(uid);
+        setTasks(dbTasks.map(fromDbTask));
+      }
+      setLoading(false);
+    })();
+
     return () => sub.remove();
   }, []);
 
-  function toTimeString(date: Date | null): string {
-    if (!date) return "";
-    const h = String(date.getHours()).padStart(2, "0");
-    const m = String(date.getMinutes()).padStart(2, "0");
-    return `${h}:${m}`;
-  }
+  const finishOnboarding = () => {
+    AsyncStorage.setItem("hasOnboarded", "true");
+    setShowOnboarding(false);
+  };
 
-  function getTriggerDate(dayKey: DayKey, time: string): Date | null {
-    if (!time) return null;
-    const [h, m] = time.split(":").map(Number);
-    const d = new Date();
-    if (dayKey === "tomorrow") d.setDate(d.getDate() + 1);
-    d.setHours(h, m, 0, 0);
-    return d;
-  }
   const addTask = async () => {
-    if (!name.trim()) return;
-    const id = uid();
-    const triggerDate = getTriggerDate(formDay, toTimeString(time));
-    let notificationId: string | null = null;
+    if (!name.trim() || !userId) return;
+    const dateStr = formTab === "today" ? todayStr() : tomorrowStr();
+    const timeStr = toTimeString(time);
+    const triggerDate = getTriggerDate(dateStr, timeStr);
 
+    let notificationId: string | null = null;
     if (triggerDate) {
       notificationId = await scheduleTaskNotification(
-        id,
+        dateStr,
         name.trim(),
         triggerDate,
       );
     }
 
-    setTasks((prev) => [
-      ...prev,
-      {
-        id,
-        name: name.trim(),
-        time: toTimeString(time),
-        date: formDay,
-        status: "pending",
-        notificationId,
-      },
-    ]);
+    const saved = await insertTask(
+      userId,
+      name.trim(),
+      timeStr,
+      dateStr,
+      notificationId,
+    );
+    if (saved) {
+      setTasks((prev) => [...prev, fromDbTask(saved)]);
+    }
+
     setName("");
     setTime(null);
   };
-  const toggleComplete = (id: string) => {
+
+  const toggleComplete = async (id: string) => {
+    const task = tasks.find((t) => t.id === id);
+    if (!task) return;
+    const newStatus = task.status === "completed" ? "pending" : "completed";
+    const completedAt =
+      newStatus === "completed" ? new Date().toISOString() : null;
+
     setTasks((prev) =>
       prev.map((t) =>
-        t.id === id
-          ? {
-              ...t,
-              status: t.status === "completed" ? "pending" : "completed",
-              completedAt:
-                t.status === "completed" ? null : new Date().toISOString(),
-            }
-          : t,
+        t.id === id ? { ...t, status: newStatus, completedAt } : t,
       ),
     );
+    await setTaskStatus(id, newStatus, completedAt);
   };
 
   const visibleTasks = tasks
-    .filter((t) => t.date === activeDay)
+    .filter(
+      (t) => t.date === (activeTab === "today" ? todayStr() : tomorrowStr()),
+    )
     .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
 
-  const [showOnboarding, setShowOnboarding] = useState(false);
-  const finishOnboarding = () => {
-    AsyncStorage.setItem("hasOnboarded", "true");
-    setShowOnboarding(false);
-  };
+  if (loading) {
+    return (
+      <SafeAreaView
+        style={[
+          styles.safe,
+          { alignItems: "center", justifyContent: "center" },
+        ]}
+      >
+        <Text style={{ color: COLORS.textFaint }}>Loading...</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -210,7 +258,7 @@ export default function TodayScreen() {
             <Text style={styles.brand}>IGNITION</Text>
             <Text style={styles.brandSub}>5 · 4 · 3 · 2 · 1 · GO</Text>
           </View>
-          <View style={{ flexDirection: "row", gap: 18 }}>
+          <View style={{ flexDirection: "row", gap: 18, alignItems: "center" }}>
             <View style={{ alignItems: "flex-end" }}>
               <Text style={styles.statNum}>{computeStreak(tasks)}</Text>
               <Text style={styles.statLabel}>Day streak</Text>
@@ -229,14 +277,14 @@ export default function TodayScreen() {
           <TouchableOpacity
             style={[
               styles.dayBtn,
-              activeDay === "today" && styles.dayBtnActive,
+              activeTab === "today" && styles.dayBtnActive,
             ]}
-            onPress={() => setActiveDay("today")}
+            onPress={() => setActiveTab("today")}
           >
             <Text
               style={[
                 styles.dayBtnText,
-                activeDay === "today" && styles.dayBtnTextActive,
+                activeTab === "today" && styles.dayBtnTextActive,
               ]}
             >
               Today
@@ -245,14 +293,14 @@ export default function TodayScreen() {
           <TouchableOpacity
             style={[
               styles.dayBtn,
-              activeDay === "tomorrow" && styles.dayBtnActive,
+              activeTab === "tomorrow" && styles.dayBtnActive,
             ]}
-            onPress={() => setActiveDay("tomorrow")}
+            onPress={() => setActiveTab("tomorrow")}
           >
             <Text
               style={[
                 styles.dayBtnText,
-                activeDay === "tomorrow" && styles.dayBtnTextActive,
+                activeTab === "tomorrow" && styles.dayBtnTextActive,
               ]}
             >
               Tomorrow
@@ -267,7 +315,7 @@ export default function TodayScreen() {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Text style={styles.emptyText}>
-                {activeDay === "today"
+                {activeTab === "today"
                   ? "No tasks yet. Add the one you're dreading most."
                   : "Plan tomorrow once today is handled."}
               </Text>
@@ -340,14 +388,14 @@ export default function TodayScreen() {
             <TouchableOpacity
               style={[
                 styles.dayBtn,
-                formDay === "today" && styles.dayBtnActive,
+                formTab === "today" && styles.dayBtnActive,
               ]}
-              onPress={() => setFormDay("today")}
+              onPress={() => setFormTab("today")}
             >
               <Text
                 style={[
                   styles.dayBtnText,
-                  formDay === "today" && styles.dayBtnTextActive,
+                  formTab === "today" && styles.dayBtnTextActive,
                 ]}
               >
                 Today
@@ -356,14 +404,14 @@ export default function TodayScreen() {
             <TouchableOpacity
               style={[
                 styles.dayBtn,
-                formDay === "tomorrow" && styles.dayBtnActive,
+                formTab === "tomorrow" && styles.dayBtnActive,
               ]}
-              onPress={() => setFormDay("tomorrow")}
+              onPress={() => setFormTab("tomorrow")}
             >
               <Text
                 style={[
                   styles.dayBtnText,
-                  formDay === "tomorrow" && styles.dayBtnTextActive,
+                  formTab === "tomorrow" && styles.dayBtnTextActive,
                 ]}
               >
                 Tomorrow
@@ -374,6 +422,7 @@ export default function TodayScreen() {
             <Text style={styles.addBtnText}>Add task</Text>
           </TouchableOpacity>
         </View>
+
         <CountdownConsole
           visible={activeTaskId !== null}
           taskName={tasks.find((t) => t.id === activeTaskId)?.name ?? ""}
@@ -383,6 +432,7 @@ export default function TodayScreen() {
             setActiveTaskId(null);
           }}
         />
+
         <OnboardingScreen visible={showOnboarding} onDone={finishOnboarding} />
       </SafeAreaView>
     </KeyboardAvoidingView>
@@ -409,6 +459,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 4,
     letterSpacing: 1,
+  },
+  statNum: { color: COLORS.amber, fontSize: 20, fontWeight: "700" },
+  statLabel: {
+    color: COLORS.textFaint,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginTop: 2,
   },
   dayToggle: {
     flexDirection: "row",
@@ -481,14 +539,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     color: COLORS.text,
     fontSize: 14,
-  },
-  statNum: { color: COLORS.amber, fontSize: 20, fontWeight: "700" },
-  statLabel: {
-    color: COLORS.textFaint,
-    fontSize: 10,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    marginTop: 2,
   },
   addBtn: {
     backgroundColor: COLORS.amber,
