@@ -3,15 +3,24 @@ import OnboardingScreen from "@/components/OnBoardingScreen";
 import { posthog } from "@/lib/posthog";
 import { ensureAuthenticated } from "@/utils/auth";
 import {
+  cancelTaskNotification,
   requestNotificationPermissions,
   scheduleTaskNotification,
 } from "@/utils/notification";
-import { DbTask, fetchTasks, insertTask, setTaskStatus } from "@/utils/tasks";
+import {
+  DbTask,
+  deleteTask,
+  fetchTasks,
+  insertTask,
+  setTaskStatus,
+  updateTask,
+} from "@/utils/tasks";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Notifications from "expo-notifications";
 import React, { useEffect, useState } from "react";
 import {
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -139,6 +148,7 @@ export default function TodayScreen() {
   const [formTab, setFormTab] = useState<TabKey>("today");
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     AsyncStorage.getItem("hasOnboarded").then((value) => {
@@ -174,11 +184,37 @@ export default function TodayScreen() {
     setShowOnboarding(false);
   };
 
-  const addTask = async () => {
+  const saveTask = async () => {
     if (!name.trim() || !userId) return;
     const dateStr = formTab === "today" ? todayStr() : tomorrowStr();
     const timeStr = toTimeString(time);
     const triggerDate = getTriggerDate(dateStr, timeStr);
+
+    if (editingTaskId) {
+      const existing = tasks.find((t) => t.id === editingTaskId);
+      if (existing?.notificationId)
+        await cancelTaskNotification(existing.notificationId);
+
+      let notificationId: string | null = null;
+      if (triggerDate) {
+        notificationId = await scheduleTaskNotification(
+          editingTaskId,
+          name.trim(),
+          triggerDate,
+        );
+      }
+
+      await updateTask(editingTaskId, name.trim(), timeStr, notificationId);
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === editingTaskId
+            ? { ...t, name: name.trim(), time: timeStr, notificationId }
+            : t,
+        ),
+      );
+      cancelEdit();
+      return;
+    }
 
     let notificationId: string | null = null;
     if (triggerDate) {
@@ -198,14 +234,60 @@ export default function TodayScreen() {
     );
     if (saved) {
       setTasks((prev) => [...prev, fromDbTask(saved)]);
-      posthog.capture("task_created", {
-        has_time: !!timeStr,
-        day: formTab,
-      });
+      posthog.capture("task_created", { has_time: !!timeStr, day: formTab });
     }
 
     setName("");
     setTime(null);
+  };
+
+  const startEdit = (task: Task) => {
+    setEditingTaskId(task.id);
+    setName(task.name);
+    if (task.name) {
+      const [h, m] = task.time.split(":").map(Number);
+      const d = new Date();
+      d.setHours(h, m, 0, 0);
+      setTime(d);
+    } else {
+      setTime(null);
+    }
+    setFormTab(task.date === todayStr() ? "today" : "tomorrow");
+  };
+
+  const cancelEdit = () => {
+    setEditingTaskId(null);
+    setName("");
+    setTime(null);
+  };
+
+  const handleDelete = (task: Task) => {
+    Alert.alert("Delete task?", `"${task.name}" will be remove permanently.`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          if (task.notificationId)
+            await cancelTaskNotification(task.notificationId);
+          await deleteTask(task.id);
+          setTasks((prev) => prev.filter((t) => t.id !== task.id));
+          if (editingTaskId == task.id) cancelEdit();
+        },
+      },
+    ]);
+  };
+
+  const handdleLongPress = (task: Task) => {
+    Alert.alert(task.name, undefined, [
+      { text: "Edit", onPress: () => startEdit(task) },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => handleDelete(task),
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
   };
 
   const toggleComplete = async (id: string) => {
@@ -335,6 +417,7 @@ export default function TodayScreen() {
               onPress={() =>
                 item.status !== "completed" && setActiveTaskId(item.id)
               }
+              onLongPress={() => handdleLongPress(item)}
             >
               <Text style={styles.taskTime}>{formatTime(item.time)}</Text>
               <View style={{ flex: 1 }}>
@@ -423,9 +506,34 @@ export default function TodayScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity style={styles.addBtn} onPress={addTask}>
-            <Text style={styles.addBtnText}>Add task</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            {editingTaskId && (
+              <TouchableOpacity
+                style={[
+                  styles.addBtn,
+                  {
+                    flex: 1,
+                    backgroundColor: COLORS.panelRaised,
+                    borderWidth: 1,
+                    borderColor: COLORS.line,
+                  },
+                ]}
+                onPress={cancelEdit}
+              >
+                <Text style={[styles.addBtnText, { color: COLORS.textDim }]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.addBtn, { flex: 1 }]}
+              onPress={saveTask}
+            >
+              <Text style={styles.addBtnText}>
+                {editingTaskId ? "Save changes" : "Add task"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <CountdownConsole

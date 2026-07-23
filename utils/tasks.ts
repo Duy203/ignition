@@ -62,3 +62,22 @@ export async function setTaskStatus(
 
   if (error) console.error("setTaskStatus failed:", error.message);
 }
+
+export async function updateTask(
+  taskId: string,
+  name: string,
+  time: string,
+  notificationId: string | null,
+): Promise<void> {
+  const { error } = await supabase
+    .from("tasks")
+    .update({ name, time: time || null, notification_id: notificationId })
+    .eq("id", taskId);
+
+  if (error) console.error("UpdateTask failed:", error.message);
+}
+
+export async function deleteTask(taskId: string): Promise<void> {
+  const { error } = await supabase.from("tasks").delete().eq("id", taskId);
+  if (error) console.error("deleteTask failed:", error.message);
+}
